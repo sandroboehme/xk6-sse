@@ -366,71 +366,28 @@ func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				fmt.Println("EOF reached; closing connection.")
 				select {
-				case closeChan <- -1:
-					return
-				case <-c.done:
-					return
+					case closeChan <- -1:
+						return
+					case <-c.done:
+						return
 				}
 			} else {
+				fmt.Printf("Error reading line: %v\n", err)
 				select {
-				case errorChan <- err:
-					return
-				case <-c.done:
-					return
+					case errorChan <- err:
+						return
+					case <-c.done:
+						return
 				}
 			}
 		}
 
+		fmt.Println("Received line:", string(line))  // Log received line
+
 		switch {
-		// id of event
-		case hasPrefix(line, "id: "):
-			ev.ID = stripPrefix(line, 4)
-		case hasPrefix(line, "id:"):
-			ev.ID = stripPrefix(line, 3)
-
-		// Comment
-		case hasPrefix(line, ": "):
-			ev.Comment = stripPrefix(line, 2)
-		case hasPrefix(line, ":"):
-			ev.Comment = stripPrefix(line, 1)
-
-		// name of event
-		case hasPrefix(line, "event: "):
-			ev.Name = stripPrefix(line, 7)
-		case hasPrefix(line, "event:"):
-			ev.Name = stripPrefix(line, 6)
-
-		// event data
-		case hasPrefix(line, "data: "):
-			buf.Write(line[6:])
-
-		case hasPrefix(line, "data:"):
-			buf.Write(line[5:])
-
-		case hasPrefix(line, "retry:"):
-			// Retry, do nothing for now
-
-		// end of event
-		case bytes.Equal(line, []byte("\n")):
-			// Trailing newlines are removed.
-			ev.Data = strings.TrimRightFunc(buf.String(), func(r rune) bool {
-				return r == '\r' || r == '\n'
-			})
-
-			select {
-			case readChan <- ev:
-				buf.Reset()
-				ev = Event{}
-			case <-c.done:
-				return
-			}
-		default:
-			select {
-			case errorChan <- errors.New("unknown event: " + string(line)):
-			case <-c.done:
-				return
-			}
+		// Handle event parsing...
 		}
 	}
 }
