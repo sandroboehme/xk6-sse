@@ -390,6 +390,7 @@ func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan
 		}
 
 		fmt.Println("Received line:", string(line)) // Log received line
+		fmt.Println("|")
 
 		// Append line to buffer
 		buf.Write(line)
