@@ -256,8 +256,6 @@ func (mi *sse) open(ctx context.Context, state *lib.State, rt *sobek.Runtime,
 	return &sseClient, connEndHook, err
 }
 
-// On is used to configure what the client should do on each event.
-// On registers a handler for a specific event type.
 func (c *Client) On(event string, handler sobek.Value) {
     if handler, ok := sobek.AssertFunction(handler); ok {
         c.eventHandlers[event] = append(c.eventHandlers[event], handler)
@@ -274,7 +272,6 @@ func (c *Client) Close() error {
 	return err
 }
 
-// handleEvent invokes the registered handlers for a specific event type.
 func (c *Client) handleEvent(event string, args ...sobek.Value) {
     fmt.Printf("Handling event: %s\n", event) // Log event handling
     if handlers, ok := c.eventHandlers[event]; ok {
@@ -364,10 +361,11 @@ func (c *Client) pushSSEMetrics(connStart, connEnd time.Time) func() {
 		})
 	}
 }
-// readEvents reads the SSE stream and parses events, sending them to the appropriate channels.
+
+// Wraps SSE in a channel, follow the SSE format described in:
+// https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
 func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan chan int) {
     reader := bufio.NewReader(c.resp.Body)
-    ev := Event{}
     var buf bytes.Buffer
 
     for {
@@ -394,36 +392,19 @@ func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan
 
         fmt.Println("Received line:", string(line)) // Log received line
 
-        switch {
-        case hasPrefix(line, "id: "):
-            ev.ID = stripPrefix(line, 4)
-            fmt.Println("Parsed ID:", ev.ID)
-        case hasPrefix(line, "event: "):
-            ev.Name = stripPrefix(line, 7)
-            fmt.Println("Parsed Event Name:", ev.Name)
-        case hasPrefix(line, "data: "):
-            buf.Write(line[6:])
-            fmt.Println("Appending Data:", string(line[6:]))
-        case bytes.Equal(line, []byte("\n")):
-            ev.Data = strings.TrimRightFunc(buf.String(), func(r rune) bool {
-                return r == '\r' || r == '\n'
-            })
+        // Append line to buffer
+        buf.Write(line)
 
-            fmt.Printf("Complete Event: ID=%s, Name=%s, Data=%s\n", ev.ID, ev.Name, ev.Data)
+        // Check for end of event
+        if bytes.Equal(line, []byte("\n")) {
+            // Send the complete raw event to the channel
+            eventData := buf.String()
+            fmt.Printf("Complete Event Data: %s\n", eventData)
 
-            // Ensure the event is sent to the channel
             select {
-            case readChan <- ev:
+            case readChan <- Event{Data: eventData}:
                 fmt.Println("Event sent to channel")
                 buf.Reset()
-                ev = Event{}
-            case <-c.done:
-                return
-            }
-        default:
-            fmt.Println("Unknown line format:", string(line))
-            select {
-            case errorChan <- errors.New("unknown event: " + string(line)):
             case <-c.done:
                 return
             }
