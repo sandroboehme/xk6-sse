@@ -396,7 +396,7 @@ func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan
 		buf.Write(line)
 
 		// Check for end of event
-		if bytes.Equal(line, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
 			// Send the complete raw event to the channel
 			eventData := buf.String()
 			fmt.Printf("Complete Event Data: %s\n", eventData)
