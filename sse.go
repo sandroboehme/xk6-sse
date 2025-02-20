@@ -137,6 +137,7 @@ func (mi *sse) Open(url string, args ...sobek.Value) (*HTTPResponse, error) {
 	for {
 		select {
 		case event := <-readEventChan:
+			client.handleEvent("event", rt.ToValue(event))
 			metrics.PushIfNotDone(ctx, client.samplesOutput, metrics.Sample{
 				TimeSeries: metrics.TimeSeries{
 					Metric: client.sseMetrics.SSEEventReceived,
@@ -146,8 +147,6 @@ func (mi *sse) Open(url string, args ...sobek.Value) (*HTTPResponse, error) {
 				Metadata: client.tagsAndMeta.Metadata,
 				Value:    1,
 			})
-
-			client.handleEvent("event", rt.ToValue(event))
 
 		case readErr := <-readErrChan:
 			client.handleEvent("error", rt.ToValue(readErr))
@@ -257,12 +256,12 @@ func (mi *sse) open(ctx context.Context, state *lib.State, rt *sobek.Runtime,
 }
 
 func (c *Client) On(event string, handler sobek.Value) {
-    if handler, ok := sobek.AssertFunction(handler); ok {
-        c.eventHandlers[event] = append(c.eventHandlers[event], handler)
-        fmt.Printf("Registered handler for event: %s\n", event) // Log registration
-    } else {
-        fmt.Printf("Failed to register handler for event: %s\n", event)
-    }
+	if handler, ok := sobek.AssertFunction(handler); ok {
+		c.eventHandlers[event] = append(c.eventHandlers[event], handler)
+		fmt.Printf("Registered handler for event: %s\n", event) // Log registration
+	} else {
+		fmt.Printf("Failed to register handler for event: %s\n", event)
+	}
 }
 
 // Close the event loop
@@ -273,18 +272,18 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) handleEvent(event string, args ...sobek.Value) {
-    fmt.Printf("Handling event: %s\n", event) // Log event handling
-    if handlers, ok := c.eventHandlers[event]; ok {
-        for _, handler := range handlers {
-            fmt.Printf("Invoking handler for event: %s\n", event) // Log handler invocation
-            if _, err := handler(sobek.Undefined(), args...); err != nil {
-                fmt.Printf("Error in handler for event: %s, error: %v\n", event, err)
-                common.Throw(c.rt, err)
-            }
-        }
-    } else {
-        fmt.Printf("No handlers registered for event: %s\n", event)
-    }
+	fmt.Printf("Handling event: %s\n", event) // Log event handling
+	if handlers, ok := c.eventHandlers[event]; ok {
+		for _, handler := range handlers {
+			fmt.Printf("Invoking handler for event: %s\n", event) // Log handler invocation
+			if _, err := handler(sobek.Undefined(), args...); err != nil {
+				fmt.Printf("Error in handler for event: %s, error: %v\n", event, err)
+				common.Throw(c.rt, err)
+			}
+		}
+	} else {
+		fmt.Printf("No handlers registered for event: %s\n", event)
+	}
 }
 
 // closeResponseBody cleanly closes the response body.
@@ -365,51 +364,51 @@ func (c *Client) pushSSEMetrics(connStart, connEnd time.Time) func() {
 // Wraps SSE in a channel, follow the SSE format described in:
 // https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
 func (c *Client) readEvents(readChan chan Event, errorChan chan error, closeChan chan int) {
-    reader := bufio.NewReader(c.resp.Body)
-    var buf bytes.Buffer
+	reader := bufio.NewReader(c.resp.Body)
+	var buf bytes.Buffer
 
-    for {
-        line, err := reader.ReadBytes('\n')
-        if err != nil {
-            if errors.Is(err, io.EOF) {
-                fmt.Println("EOF reached; closing connection.")
-                select {
-                case closeChan <- -1:
-                    return
-                case <-c.done:
-                    return
-                }
-            } else {
-                fmt.Printf("Error reading line: %v\n", err)
-                select {
-                case errorChan <- err:
-                    return
-                case <-c.done:
-                    return
-                }
-            }
-        }
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("EOF reached; closing connection.")
+				select {
+				case closeChan <- -1:
+					return
+				case <-c.done:
+					return
+				}
+			} else {
+				fmt.Printf("Error reading line: %v\n", err)
+				select {
+				case errorChan <- err:
+					return
+				case <-c.done:
+					return
+				}
+			}
+		}
 
-        fmt.Println("Received line:", string(line)) // Log received line
+		fmt.Println("Received line:", string(line)) // Log received line
 
-        // Append line to buffer
-        buf.Write(line)
+		// Append line to buffer
+		buf.Write(line)
 
-        // Check for end of event
-        if bytes.Equal(line, []byte("\n")) {
-            // Send the complete raw event to the channel
-            eventData := buf.String()
-            fmt.Printf("Complete Event Data: %s\n", eventData)
+		// Check for end of event
+		if bytes.Equal(line, []byte("\n")) {
+			// Send the complete raw event to the channel
+			eventData := buf.String()
+			fmt.Printf("Complete Event Data: %s\n", eventData)
 
-            select {
-            case readChan <- Event{Data: eventData}:
-                fmt.Println("Event sent to channel")
-                buf.Reset()
-            case <-c.done:
-                return
-            }
-        }
-    }
+			select {
+			case readChan <- Event{Data: eventData}:
+				fmt.Println("Event sent to channel")
+				buf.Reset()
+			case <-c.done:
+				return
+			}
+		}
+	}
 }
 
 // Wrap the raw HTTPResponse we received to a sse.HTTPResponse we can pass to the user
